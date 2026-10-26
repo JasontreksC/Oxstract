@@ -1,0 +1,46 @@
+# Secrets and local config. Never commit real credentials.
+.env
+.env.*
+!.env.example
+
+config/drive.yaml
+config/drive_token.json
+config/*.json
+
+*token*.json
+*credentials*.json
+client_secret*.json
+*.pem
+
+# Local media and large test videos. samples/README.md stays tracked.
+data/
+media/
+tmp/
+samples/*
+!samples/README.md
+*.mp4
+*.mov
+*.mkv
+*.avi
+*.webm
+*.m4v
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.egg-info/
+
+# Node
+node_modules/
+dist/
+*.local
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/

@@ -1,0 +1,9 @@
+# config/drive.yaml로 복사해 서버에서만 채운다. drive.yaml과
+# config/drive_token.json은 커밋하지 않는다. 실제 파일은 chmod 600으로 둔다.
+google_drive:
+  enabled: false
+  api_key: "" # API ID
+  oauth_client_id: "" # OAuth 클라이언트 ID
+  oauth_client_secret: "" # 클라이언트가 시크릿을 요구할 때만 채운다
+  token_path: config/drive_token.json # 최초 승인 후 자동 생성
+  folder_id: "" # 업로드할 드라이브 폴더. 비우면 루트

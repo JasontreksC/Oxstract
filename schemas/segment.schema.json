@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oxstract.local/schemas/segment.schema.json",
+  "title": "Segment",
+  "description": "원본 영상 시각 기준의 움직임 구간. start와 end는 초다. 마지막 구간의 transition_after는 null이거나 생략한다.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["start", "end", "score"],
+  "properties": {
+    "start": {
+      "type": "number",
+      "minimum": 0
+    },
+    "end": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "score": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "transition_after": {
+      "description": "이 컷 다음에 적용할 전환. 마지막 컷에서는 null 또는 생략.",
+      "anyOf": [
+        { "$ref": "https://oxstract.local/schemas/transition.schema.json" },
+        { "type": "null" }
+      ]
+    }
+  }
+}

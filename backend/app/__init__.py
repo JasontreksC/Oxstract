@@ -1,0 +1,1 @@
+"""Oxstract FastAPI application package."""

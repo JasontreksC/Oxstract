@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oxstract.local/schemas/segment-list.schema.json",
+  "title": "SegmentList",
+  "description": "시간순 구간 목록. PATCH /jobs/{id}/segments 본문이며, 각 구간의 transition_after를 포함한다. 마지막 요소에는 전환을 두지 않는다.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["segments"],
+  "properties": {
+    "segments": {
+      "type": "array",
+      "items": {
+        "$ref": "https://oxstract.local/schemas/segment.schema.json"
+      }
+    }
+  }
+}

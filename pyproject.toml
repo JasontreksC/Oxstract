@@ -1,0 +1,21 @@
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["backend", "."]
+extend-exclude = [".venv", "frontend", "node_modules"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = [
+  "fastapi.Body",
+  "fastapi.Depends",
+  "fastapi.File",
+  "fastapi.Path",
+  "fastapi.Query",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["backend/tests"]
+pythonpath = [".", "backend"]

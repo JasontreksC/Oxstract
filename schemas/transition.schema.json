@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oxstract.local/schemas/transition.schema.json",
+  "title": "TransitionAfter",
+  "description": "컷과 다음 컷 사이의 전환. 마지막 컷에는 두지 않는다. fade 기본 길이는 0.5초, text_card 기본 길이는 2초, none이 기본값이다.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["type"],
+  "properties": {
+    "type": {
+      "type": "string",
+      "enum": ["fade", "text_card", "none"]
+    },
+    "duration": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "description": "초. fade는 페이드 길이, text_card는 장면 표시 시간."
+    },
+    "bg_color": {
+      "type": "string",
+      "pattern": "^#[0-9A-Fa-f]{6}$",
+      "description": "text_card 배경색."
+    },
+    "text": {
+      "type": "string",
+      "description": "text_card에 그릴 문구. 한글을 포함할 수 있다."
+    },
+    "font_size": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "description": "text_card 글자 크기(px)."
+    },
+    "font_color": {
+      "type": "string",
+      "pattern": "^#[0-9A-Fa-f]{6}$",
+      "description": "text_card 글자색."
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "type": { "const": "fade" } },
+        "required": ["type"]
+      },
+      "then": { "required": ["duration"] }
+    },
+    {
+      "if": {
+        "properties": { "type": { "const": "text_card" } },
+        "required": ["type"]
+      },
+      "then": {
+        "required": ["duration", "bg_color", "text", "font_size", "font_color"]
+      }
+    }
+  ]
+}

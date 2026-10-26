@@ -1,0 +1,67 @@
+name: oxstract
+
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    environment:
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      MEDIA_ROOT: ${MEDIA_ROOT:-/data}
+      CONFIG_DIR: /app/config
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
+    volumes:
+      - ./config:/app/config
+      - media:/data
+    depends_on:
+      - redis
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')",
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  worker:
+    build: ./worker
+    environment:
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      MEDIA_ROOT: ${MEDIA_ROOT:-/data}
+      CONFIG_DIR: /app/config
+    volumes:
+      - ./config:/app/config
+      - media:/data
+    depends_on:
+      - redis
+    # GPU는 선택이다. NVIDIA Container Toolkit이 있는 호스트에서만 아래를 해제한다.
+    # CPU만 있으면 이 주석을 유지한다.
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "5173:5173"
+    environment:
+      VITE_API_PROXY: http://backend:8000
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  media:
