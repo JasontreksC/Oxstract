@@ -65,6 +65,26 @@ paths:
               schema:
                 type: string
                 format: binary
+  /videos/{video_id}/file:
+    get:
+      summary: 원본 영상 내려받기
+      operationId: getVideoFile
+      parameters:
+        - $ref: "#/components/parameters/VideoId"
+      responses:
+        "200":
+          description: 원본 영상 바이트
+          content:
+            video/mp4:
+              schema:
+                type: string
+                format: binary
+        "404":
+          description: 영상 없음
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /videos/{video_id}/detect:
     post:
       summary: 한 프레임의 탐지 박스

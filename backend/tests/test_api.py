@@ -17,6 +17,7 @@ ROOT = Path(__file__).resolve().parents[2]
 PATHS = [
     "/videos",
     "/videos/{video_id}/frame",
+    "/videos/{video_id}/file",
     "/videos/{video_id}/detect",
     "/jobs",
     "/jobs/{job_id}",
@@ -40,12 +41,10 @@ def test_openapi_lists_plan_routes() -> None:
     assert "/jobs/{job_id}/progress" in websocket_paths
 
 
-def test_upload_is_stub() -> None:
-    response = client.post(
-        "/videos",
-        files={"file": ("clip.mp4", b"not-a-video", "video/mp4")},
-    )
-    assert response.status_code == 501
+def test_upload_requires_file() -> None:
+    response = client.post("/videos")
+
+    assert response.status_code == 422
 
 
 def test_create_job_rejects_unknown_source() -> None:

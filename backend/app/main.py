@@ -1,17 +1,22 @@
-"""Oxstract API stub.
+"""Oxstract API.
 
-Routes follow the plan sections 4, 5.0, and 5.5. Handlers validate the
-contract and then report that the pipeline is not implemented yet.
+Routes follow the plan sections 4, 5.0, and 5.5. Upload, frame, and file
+serving work (M1). Detection, jobs, and rendering still report 501.
 """
 
 from __future__ import annotations
 
 import os
+import shutil
+import uuid
+from pathlib import Path
 from typing import NoReturn
 
 from fastapi import FastAPI, File, HTTPException, Query, UploadFile, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, Response
 
+from app.media import MediaError, extract_frame_png, probe
 from app.schemas import (
     DetectResponse,
     JobCreate,
@@ -20,6 +25,7 @@ from app.schemas import (
     SegmentList,
     VideoCreated,
 )
+from app.store import VideoRecord, get_video, media_root, save_video
 
 app = FastAPI(
     title="Oxstract",
@@ -53,15 +59,73 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-@app.post("/videos", response_model=VideoCreated)
+@app.post("/videos", response_model=VideoCreated, status_code=201)
 async def upload_video(file: UploadFile = File(...)) -> VideoCreated:
-    name = file.filename or "video"
-    _not_implemented(f"업로드({name})는 아직 구현되지 않았습니다.")
+    content_type = file.content_type
+    if (
+        content_type
+        and not content_type.startswith("video/")
+        and content_type != "application/octet-stream"
+    ):
+        raise HTTPException(status_code=415, detail=f"{content_type}은 영상 형식이 아닙니다.")
+    video_id = uuid.uuid4().hex
+    directory = media_root() / "videos" / video_id
+    directory.mkdir(parents=True, exist_ok=True)
+    name = Path(file.filename or "video").name
+    if name in ("", ".", ".."):
+        name = "video"
+    dest = directory / name
+    with dest.open("wb") as out:
+        while chunk := await file.read(1024 * 1024):
+            out.write(chunk)
+    try:
+        duration, width, height = probe(str(dest))
+    except MediaError:
+        shutil.rmtree(directory, ignore_errors=True)
+        raise HTTPException(status_code=422, detail="영상 파일을 해석할 수 없습니다.") from None
+    record = save_video(
+        VideoRecord(
+            id=video_id,
+            filename=name,
+            content_type=content_type,
+            duration=duration,
+            width=width,
+            height=height,
+            path=str(dest),
+        )
+    )
+    return VideoCreated(
+        id=record.id,
+        filename=record.filename,
+        content_type=record.content_type,
+        duration=record.duration,
+        width=record.width,
+        height=record.height,
+    )
 
 
 @app.get("/videos/{video_id}/frame")
-def get_frame(video_id: str, t: float = Query(ge=0)) -> None:
-    _not_implemented(f"영상 {video_id}의 t={t} 프레임은 아직 구현되지 않았습니다.")
+def get_frame(video_id: str, t: float = Query(ge=0)) -> Response:
+    record = get_video(video_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail=f"영상 {video_id}이 없습니다.")
+    try:
+        png = extract_frame_png(record.path, t)
+    except MediaError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from None
+    return Response(content=png, media_type="image/png")
+
+
+@app.get("/videos/{video_id}/file")
+def get_video_file(video_id: str) -> FileResponse:
+    record = get_video(video_id)
+    if record is None or not Path(record.path).is_file():
+        raise HTTPException(status_code=404, detail=f"영상 {video_id}이 없습니다.")
+    return FileResponse(
+        record.path,
+        media_type=record.content_type or "video/mp4",
+        filename=record.filename,
+    )
 
 
 @app.post("/videos/{video_id}/detect", response_model=DetectResponse)

@@ -96,6 +96,10 @@ button[aria-pressed="true"] {
   color: var(--color-text-muted);
 }
 
+.error {
+  color: var(--color-danger);
+}
+
 .video-player__stage {
   position: relative;
   height: 360px;

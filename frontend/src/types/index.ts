@@ -14,3 +14,4 @@ export {
 } from "./transition";
 export type { Segment, SegmentList } from "./segment";
 export type { BBox, DetectionBox, SelectionSource } from "./selection";
+export type { VideoMeta } from "./video";

@@ -22,7 +22,7 @@ export function VideoPlayer({
     <section className="panel video-player" aria-label="영상 미리보기">
       <div className="video-player__stage">
         {src ? (
-          <video src={src} />
+          <video src={src} controls />
         ) : (
           <p className="video-player__empty muted">영상을 올리면 여기에서 고릅니다.</p>
         )}
