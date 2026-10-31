@@ -1,0 +1,89 @@
+.overlay {
+  position: absolute;
+  inset: 0;
+  cursor: crosshair;
+  touch-action: none;
+  user-select: none;
+}
+
+.box,
+.chosen,
+.drawing {
+  position: absolute;
+  border-radius: 4px;
+}
+
+.box {
+  padding: 0;
+  border: 1.5px dashed rgba(232, 237, 244, 0.75);
+  background: transparent;
+  pointer-events: none;
+}
+
+.box[data-hover],
+.box:focus-visible {
+  border-style: solid;
+  border-color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.box[data-selected],
+.chosen {
+  border: 2px solid var(--color-overlay-stroke);
+  background: var(--color-overlay);
+}
+
+.drawing {
+  border: 2px dashed var(--color-accent);
+  background: var(--color-overlay);
+  pointer-events: none;
+}
+
+.label {
+  position: absolute;
+  left: -2px;
+  bottom: calc(100% + 4px);
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 4px;
+  background: var(--color-scrim);
+  color: var(--color-text);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  line-height: 22px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.inside {
+  top: 2px;
+  bottom: auto;
+  left: 2px;
+}
+
+.box[data-selected] .label,
+.chosen .label {
+  background: var(--color-accent);
+  color: var(--color-on-accent);
+}
+
+.hint,
+.count {
+  position: absolute;
+  bottom: var(--space-3);
+  padding: 6px 10px;
+  border-radius: var(--radius-md);
+  background: var(--color-scrim);
+  color: #d3dae4;
+  font-size: var(--font-size-sm);
+  pointer-events: none;
+}
+
+.hint {
+  left: var(--space-3);
+  max-width: calc(100% - 160px);
+}
+
+.count {
+  right: var(--space-3);
+}

@@ -1,0 +1,137 @@
+.header {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-bottom: 10px;
+  font-size: var(--font-size-sm);
+}
+
+.heading {
+  font-size: var(--font-size-md);
+  font-weight: 600;
+}
+
+.hint {
+  margin-left: auto;
+}
+
+.strip {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  overflow-x: auto;
+  padding-bottom: 6px;
+}
+
+.group {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  flex: none;
+}
+
+.card {
+  flex: none;
+  width: 124px;
+  font-size: var(--font-size-sm);
+}
+
+.thumb {
+  position: relative;
+  height: 70px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: #1a212b;
+  overflow: hidden;
+}
+
+.thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.label {
+  position: absolute;
+  left: 6px;
+  top: 6px;
+  padding: 0 6px;
+  border-radius: 4px;
+  background: var(--color-scrim);
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  line-height: 18px;
+}
+
+.chip {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  margin-top: 20px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-raised);
+  font-size: var(--font-size-sm);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.chip[data-selected],
+.title[data-selected],
+.addTitle[data-selected] {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+}
+
+.boundary {
+  flex: none;
+  width: 2px;
+  height: 70px;
+  border-radius: 1px;
+  background: #3a4352;
+}
+
+.addTitle,
+.title {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  width: 96px;
+  height: 70px;
+  padding: 6px;
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+}
+
+.addTitle {
+  border: 1px dashed var(--color-border-strong);
+  background: transparent;
+  color: var(--color-text-muted);
+}
+
+.title {
+  border: 1px solid var(--color-border);
+  font-weight: 700;
+}
+
+.titleText {
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  white-space: pre-line;
+}

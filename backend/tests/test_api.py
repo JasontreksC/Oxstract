@@ -8,132 +8,103 @@ from pydantic import ValidationError
 from referencing import Registry, Resource
 from referencing.jsonschema import DRAFT202012
 
-from app.main import app
+from app import jobs
+from app.db import transaction
+from app.main import app, create_app
 from app.schemas import SegmentList
 
 client = TestClient(app)
 ROOT = Path(__file__).resolve().parents[2]
 
 PATHS = [
-    "/videos",
-    "/videos/{video_id}/frame",
-    "/videos/{video_id}/file",
-    "/videos/{video_id}/detect",
-    "/jobs",
-    "/jobs/{job_id}",
-    "/jobs/{job_id}/segments",
-    "/jobs/{job_id}/render",
-    "/jobs/{job_id}/output",
+    "/api/health",
+    "/api/projects",
+    "/api/projects/{project_id}",
+    "/api/projects/{project_id}/clips",
+    "/api/projects/{project_id}/clips/{clip_id}",
+    "/api/projects/{project_id}/clips/order",
+    "/api/projects/{project_id}/clips/{clip_id}/target",
+    "/api/videos/{video_id}",
+    "/api/videos/{video_id}/file",
+    "/api/videos/{video_id}/proxy",
+    "/api/videos/{video_id}/frame",
+    "/api/videos/{video_id}/thumb",
+    "/api/videos/{video_id}/detect",
+    "/api/jobs",
+    "/api/jobs/{job_id}",
+    "/api/jobs/{job_id}/cancel",
+    "/api/jobs/{job_id}/events",
 ]
 
 
 def test_health() -> None:
-    response = client.get("/health")
+    response = client.get("/api/health")
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
 
 
-def test_openapi_lists_plan_routes() -> None:
-    paths = client.get("/openapi.json").json()["paths"]
+def test_openapi_lists_routes() -> None:
+    paths = client.get("/api/openapi.json").json()["paths"]
     for path in PATHS:
         assert path in paths
-    websocket_paths = [getattr(route, "path", None) for route in app.routes]
-    assert "/jobs/{job_id}/progress" in websocket_paths
 
 
-def test_upload_requires_file() -> None:
-    response = client.post("/videos")
-
-    assert response.status_code == 422
+def test_detect_unknown_video_is_404() -> None:
+    assert client.post("/api/videos/v1/detect", params={"t": 1}).status_code == 404
 
 
-def test_create_job_rejects_unknown_source() -> None:
-    response = client.post(
-        "/jobs",
-        json={
-            "video_id": "v1",
-            "frame_t": 1.0,
-            "bbox": {"x": 0, "y": 0, "width": 10, "height": 10},
-            "source": "text",
-        },
-    )
-    assert response.status_code == 422
+def test_job_events_stream_until_finished() -> None:
+    with transaction() as conn:
+        job_id = jobs.enqueue(conn, "proxy", "video-1")
+    jobs.finish(job_id)
+
+    response = client.get(f"/api/jobs/{job_id}/events")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/event-stream")
+    events = [line for line in response.text.splitlines() if line.startswith("data: ")]
+    assert len(events) == 1
+    assert json.loads(events[0][len("data: ") :])["status"] == "done"
 
 
-def test_create_job_accepts_plan_body_then_stubs() -> None:
-    response = client.post(
-        "/jobs",
-        json={
-            "video_id": "v1",
-            "frame_t": 1.25,
-            "bbox": {"x": 1, "y": 2, "width": 10, "height": 20},
-            "source": "detect",
-            "class": "dog",
-            "target": {"text": "강아지"},
-            "options": {"motion_threshold": 0.05, "min_segment_duration": 1, "padding": 0.3},
-        },
-    )
-    assert response.status_code == 501
+def test_job_events_unknown_job_is_404() -> None:
+    assert client.get("/api/jobs/missing/events").status_code == 404
 
 
-def test_patch_segments_validates_then_stubs() -> None:
-    response = client.patch(
-        "/jobs/job-1/segments",
-        json={
-            "segments": [
-                {
-                    "start": 1.2,
-                    "end": 4.8,
-                    "score": 0.8,
-                    "transition_after": {"type": "fade", "duration": 0.5},
-                },
-                {"start": 12, "end": 15, "score": 0.4},
-            ]
-        },
-    )
-    assert response.status_code == 501
+def test_cancel_queued_job() -> None:
+    with transaction() as conn:
+        job_id = jobs.enqueue(conn, "proxy", "video-1")
+
+    response = client.post(f"/api/jobs/{job_id}/cancel")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "canceled"
+    assert client.get("/api/jobs", params={"active": True}).json() == []
 
 
-def test_patch_rejects_transition_on_last_segment() -> None:
+def test_spa_serves_index_for_app_routes(tmp_path: Path, monkeypatch) -> None:
+    dist = tmp_path / "dist"
+    (dist / "assets").mkdir(parents=True)
+    (dist / "index.html").write_text("<!doctype html><title>Oxstract</title>")
+    (dist / "assets" / "app.js").write_text("console.log(1)")
+    (dist / "favicon.svg").write_text("<svg></svg>")
+    monkeypatch.setenv("FRONTEND_DIST", str(dist))
+    spa = TestClient(create_app())
+
+    assert "Oxstract" in spa.get("/").text
+    assert "Oxstract" in spa.get("/p/abc/segments").text
+    assert spa.get("/assets/app.js").text == "console.log(1)"
+    assert spa.get("/favicon.svg").text == "<svg></svg>"
+    assert spa.get("/api/nope").status_code == 404
+    assert spa.get("/api/health").json() == {"status": "ok"}
+    assert "Oxstract" in spa.get("/../../etc/passwd").text
+
+
+def test_segment_list_rejects_transition_on_last_segment() -> None:
     with pytest.raises(ValidationError):
         SegmentList.model_validate(
-            {
-                "segments": [
-                    {
-                        "start": 0,
-                        "end": 1,
-                        "score": 1,
-                        "transition_after": {"type": "none"},
-                    }
-                ]
-            }
+            {"segments": [{"start": 0, "end": 1, "score": 1, "transition_after": {"type": "none"}}]}
         )
-    response = client.patch(
-        "/jobs/job-1/segments",
-        json={
-            "segments": [
-                {
-                    "start": 0,
-                    "end": 1,
-                    "score": 1,
-                    "transition_after": {"type": "none"},
-                }
-            ]
-        },
-    )
-    assert response.status_code == 422
-
-
-def test_output_missing() -> None:
-    response = client.get("/jobs/missing/output")
-    assert response.status_code == 404
-
-
-def test_progress_socket_stub() -> None:
-    with client.websocket_connect("/jobs/job-1/progress") as socket:
-        payload = socket.receive_json()
-    assert payload["job_id"] == "job-1"
-    assert payload["stage"] == "error"
 
 
 def _schema_registry() -> Registry:

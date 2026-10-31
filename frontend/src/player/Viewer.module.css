@@ -1,0 +1,73 @@
+.viewer {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.stage {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  border-radius: var(--radius-lg);
+  background: #0a0d11;
+  overflow: hidden;
+}
+
+.stage video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+  cursor: pointer;
+}
+
+.placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-5);
+  text-align: center;
+  color: var(--color-text-muted);
+}
+
+.placeholder p {
+  margin: 0;
+}
+
+.tag {
+  position: absolute;
+  top: var(--space-3);
+  right: var(--space-3);
+  max-width: 50%;
+  padding: 4px 10px;
+  border-radius: var(--radius-md);
+  background: var(--color-scrim);
+  color: #d3dae4;
+  font-size: var(--font-size-sm);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.time {
+  padding: 0 var(--space-1);
+  font-size: var(--font-size-md);
+}
+
+.scrubber {
+  flex: 1 1 200px;
+  margin: 0;
+  accent-color: var(--color-accent);
+}
