@@ -1,5 +1,5 @@
-import type { AnalysisResult, Video } from "../../api/types";
-import { classLabel } from "../../lib/coco";
+import type { AnalysisResult, Target, Video } from "../../api/types";
+import { targetLabel } from "../../lib/coco";
 import { formatSignal, sampleAt, SIGNALS } from "../../lib/signals";
 import { sourceToStage } from "../../player/geometry";
 import type { ViewerState } from "../../player/Viewer";
@@ -9,10 +9,11 @@ export interface TrackOverlayProps {
   state: ViewerState;
   video: Video;
   result: AnalysisResult;
+  target: Target | null;
 }
 
 /** 재생하면서 추적 박스와 그 순간의 신호를 영상 위에 보여 준다. 클릭은 영상으로 통과한다. */
-export function TrackOverlay({ state, video, result }: TrackOverlayProps) {
+export function TrackOverlay({ state, video, result, target }: TrackOverlayProps) {
   const index = sampleAt(result, state.time);
   const samples = result.samples;
   const visible = samples.visible[index] ?? false;
@@ -38,7 +39,7 @@ export function TrackOverlay({ state, video, result }: TrackOverlayProps) {
           className={s.box}
           style={{ left: box.x, top: box.y, width: box.width, height: box.height }}
         >
-          <span className={s.label}>{classLabel(result.target_class)}</span>
+          <span className={s.label}>{targetLabel(target)}</span>
         </div>
       ) : null}
       <div className={s.readout}>

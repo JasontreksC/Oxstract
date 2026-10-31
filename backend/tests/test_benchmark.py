@@ -1,16 +1,26 @@
-from scripts.benchmark import estimate_detect_seconds, ten_minute_1080p_frames
+from pathlib import Path
+
+import pytest
+
+from app import media
+from scripts.benchmark import SCENE_BOX, make_test_video, scene_state
 
 
-def test_ten_minute_frame_count() -> None:
-    assert ten_minute_1080p_frames() == 18_000
+def test_scene_rests_moves_leaves_and_comes_back() -> None:
+    assert scene_state(1)[0] == SCENE_BOX[0]
+    assert scene_state(6)[0] > SCENE_BOX[0]  # moving
+    assert scene_state(10)[1] > 0  # spinning
+    assert scene_state(16)[0] > 1920  # out of the frame
+    assert scene_state(21)[0] == SCENE_BOX[0]  # back
+    assert scene_state(31) == scene_state(1)  # loops
 
 
-def test_cpu_nano_matches_plan_chapter() -> None:
-    seconds = estimate_detect_seconds(18_000, "n", "cpu")
-    assert 16 * 60 < seconds < 18 * 60
+def test_test_video_has_the_asked_length_and_sound(tmp_path: Path) -> None:
+    path = tmp_path / "bench.mp4"
 
+    make_test_video(path, 2.0, media.ffmpeg_bin(), size=(320, 180))
 
-def test_sample_every_reduces_detection_frames() -> None:
-    full = estimate_detect_seconds(18_000, "n", "cpu", sample_every=1)
-    sampled = estimate_detect_seconds(18_000, "n", "cpu", sample_every=3)
-    assert sampled * 2.5 < full
+    info = media.probe(path)
+    assert info.duration == pytest.approx(2.0, abs=0.1)
+    assert (info.width, info.height) == (320, 180)
+    assert info.has_audio

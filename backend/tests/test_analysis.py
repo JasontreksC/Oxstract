@@ -148,7 +148,7 @@ def test_class_target_snaps_to_an_overlapping_detection(tmp_path: Path) -> None:
 
     samples = _run_with(path, detector)["samples"]
 
-    assert 2 <= detector.calls <= 6  # about once a second in each direction
+    assert 1 <= detector.calls <= 3  # about every two seconds in each direction
     assert samples["x"][-1] == pytest.approx(START[0] + 154, abs=2)
     assert samples["x"][0] == pytest.approx(START[0], abs=10)  # never pulled across early
 
@@ -185,6 +185,44 @@ def test_target_leaving_and_returning_is_lost_then_found(tmp_path: Path) -> None
     assert not visible[(t > 2.0) & (t < 3.0)].any()  # gone: no box stuck at the edge
     assert visible[t > 3.7].all()  # back: found again
     assert samples["x"][-1] == pytest.approx(START[0], abs=10)
+
+
+def test_target_found_again_whole_after_leaving_slowly(tmp_path: Path) -> None:
+    from synthetic import WIDTH as W
+    from synthetic import make_scene
+
+    def slow_exit(t: float) -> tuple[float, float]:
+        # Creeps out over 3 s (half cut at the edge for a while), comes back fast.
+        away = W + 40
+        if t < 1:
+            x = START[0]
+        elif t < 4:
+            x = START[0] + (away - START[0]) * (t - 1) / 3
+        elif t < 5:
+            x = away
+        elif t < 5.6:
+            x = away + (START[0] - away) * (t - 5) / 0.6
+        else:
+            x = START[0]
+        return (x, START[1])
+
+    path = make_scene(tmp_path / "slow.mp4", slow_exit, seconds=7)
+    result = analyze(
+        str(path),
+        fps=FPS,
+        frame_count=FPS * 7,
+        target_index=15,
+        target_box=BOX,
+        source_size=(WIDTH, HEIGHT),
+        class_name=None,
+        detector=None,
+        on_progress=lambda fraction: True,
+    )
+
+    samples = result["samples"]
+    assert samples["x"][-1] == pytest.approx(START[0], abs=10)
+    # Whole again, not the narrow part that was seen at the edge on the way out.
+    assert samples["w"][-1] == pytest.approx(BOX[2], abs=10)
 
 
 def test_finds_the_same_object_in_another_clip(tmp_path: Path) -> None:

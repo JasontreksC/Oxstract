@@ -236,7 +236,12 @@ export function ProjectEditor() {
                     )
                   : step === "segments" && analysis.data
                     ? (state) => (
-                        <TrackOverlay state={state} video={selected.video} result={analysis.data} />
+                        <TrackOverlay
+                          state={state}
+                          video={selected.video}
+                          result={analysis.data}
+                          target={selected.target}
+                        />
                       )
                     : undefined
               }
