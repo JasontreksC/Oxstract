@@ -44,3 +44,7 @@ dist/
 .DS_Store
 .idea/
 .vscode/
+
+# Detection model files (export them, see models/README.md)
+models/*
+!models/README.md

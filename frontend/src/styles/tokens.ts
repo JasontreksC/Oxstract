@@ -1,21 +1,29 @@
 /** docs/design/style-guide.md 와 tokens.css 와 같은 값. 캔버스나 오버레이에서 쓴다. */
 
 export const colors = {
-  bg: "#0f1218",
-  surface: "#171c24",
-  surfaceRaised: "#212833",
-  border: "#313a49",
-  text: "#e7edf6",
-  textMuted: "#93a0b5",
+  bg: "#0e1116",
+  surface: "#151a21",
+  surfaceCard: "#1a2028",
+  surfaceRaised: "#1d232c",
+  border: "#2a313c",
+  borderStrong: "#333c49",
+  text: "#e8edf4",
+  textMuted: "#9aa6b8",
+  textDim: "#8a95a7",
   accent: "#4c8dff",
-  accentStrong: "#80b0ff",
+  accentStrong: "#7aa7ff",
+  onAccent: "#08111f",
   danger: "#f07178",
   success: "#6dcea0",
   warning: "#e6b35a",
   segment: "#4c8dff",
+  signalMove: "#8fb4ff",
+  signalRotate: "#c792ea",
+  signalFlow: "#5cc8d6",
+  threshold: "#e6b35a",
   transitionFade: "#c792ea",
   transitionText: "#e6b35a",
-  overlay: "rgba(76, 141, 255, 0.28)",
+  overlay: "rgba(76, 141, 255, 0.16)",
   overlayStroke: "#4c8dff",
 } as const;
 
@@ -30,6 +38,6 @@ export const space = {
 } as const;
 
 export const fontFamily = {
-  sans: 'Pretendard, "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif',
+  sans: '"Pretendard Variable", Pretendard, "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif',
   mono: 'ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace',
 } as const;

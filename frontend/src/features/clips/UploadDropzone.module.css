@@ -1,0 +1,32 @@
+.zone {
+  aspect-ratio: 16 / 9;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  padding: var(--space-5);
+  border: 2px dashed var(--color-border-strong);
+  border-radius: var(--radius-lg);
+  background: #11161c;
+  text-align: center;
+}
+
+.zone p {
+  margin: 0;
+}
+
+.icon {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 999px;
+  background: var(--color-surface-raised);
+  color: var(--color-accent-strong);
+}
+
+.title {
+  font-size: var(--font-size-xl);
+  font-weight: 600;
+}

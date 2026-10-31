@@ -1,0 +1,242 @@
+.header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+  margin-bottom: var(--space-2);
+  font-size: var(--font-size-sm);
+}
+
+.title {
+  font-size: var(--font-size-md);
+  font-weight: 600;
+  margin-right: var(--space-2);
+}
+
+.legend,
+.legendStatic {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.legend {
+  height: 26px;
+  padding: 0 8px;
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  background: transparent;
+  cursor: pointer;
+}
+
+.legend[aria-pressed="false"] {
+  opacity: 0.45;
+  text-decoration: line-through;
+}
+
+.swatch {
+  width: 16px;
+  height: 3px;
+  border-radius: 2px;
+}
+
+.dash {
+  width: 16px;
+  border-top: 2px dashed var(--color-threshold);
+}
+
+.lostSwatch {
+  width: 14px;
+  height: 10px;
+  border-radius: 2px;
+  background: repeating-linear-gradient(
+    135deg,
+    rgba(240, 113, 120, 0.35) 0 3px,
+    transparent 3px 6px
+  );
+}
+
+.hint {
+  margin-left: auto;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  row-gap: 6px;
+  align-items: center;
+}
+
+.ruler {
+  position: relative;
+  height: 16px;
+}
+
+.ruler span {
+  position: absolute;
+  font-size: var(--font-size-xs);
+  line-height: 16px;
+  color: var(--color-text-dim);
+}
+
+.rowLabel {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.graph {
+  position: relative;
+  height: 110px;
+  border-radius: var(--radius-sm);
+  background: #10151b;
+  overflow: hidden;
+  cursor: pointer;
+  touch-action: none;
+}
+
+.graph svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.lost {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: repeating-linear-gradient(
+    135deg,
+    rgba(240, 113, 120, 0.2) 0 4px,
+    transparent 4px 8px
+  );
+}
+
+.playline {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--color-text);
+  pointer-events: none;
+}
+
+.keptSwatch {
+  width: 14px;
+  height: 10px;
+  border-radius: 3px;
+  background: rgba(76, 141, 255, 0.55);
+  border: 1px solid var(--color-accent-strong);
+}
+
+.keptShade {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: rgba(76, 141, 255, 0.12);
+}
+
+.threshold {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-top: 1.5px dashed var(--color-threshold);
+  pointer-events: none;
+}
+
+.thresholdHandle {
+  position: absolute;
+  right: 6px;
+  transform: translateY(-50%);
+  height: 20px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 4px;
+  background: var(--color-threshold);
+  color: #1a1405;
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  cursor: ns-resize;
+  touch-action: none;
+}
+
+.band {
+  position: relative;
+  height: 36px;
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  cursor: copy;
+  touch-action: none;
+  user-select: none;
+}
+
+.cut {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  min-width: 6px;
+  border-radius: 5px;
+  border: 1px solid var(--color-accent-strong);
+  background: rgba(76, 141, 255, 0.5);
+  cursor: pointer;
+}
+
+.cut[data-selected] {
+  background: rgba(76, 141, 255, 0.8);
+  border-color: #fff;
+  box-shadow: 0 0 0 1px #fff;
+}
+
+.cutLabel {
+  position: absolute;
+  inset: 0 10px;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  overflow: hidden;
+  color: #f2f6fc;
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 8px;
+  cursor: ew-resize;
+}
+
+.handle::after {
+  content: "";
+  position: absolute;
+  top: 25%;
+  bottom: 25%;
+  left: 3px;
+  width: 2px;
+  border-radius: 1px;
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.left {
+  left: -1px;
+}
+
+.right {
+  right: -1px;
+}
+
+.creating {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  border-radius: 5px;
+  border: 1.5px dashed var(--color-accent-strong);
+  background: rgba(76, 141, 255, 0.25);
+  pointer-events: none;
+}
