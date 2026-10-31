@@ -16,7 +16,8 @@ from pathlib import Path
 
 import cv2
 
-from app import analysis, jobs, media, render, segments, sequence, store
+from app import analysis, jobs, locate, media, render, segments, sequence, store
+from app.appearance import Appearance
 from app.detect import DetectorUnavailable, get_detector
 
 log = logging.getLogger("oxstract.worker")
@@ -58,27 +59,71 @@ def run_proxy(job: jobs.JobRecord) -> None:
     store.set_proxy_path(video.id, target)
 
 
+def _detector_for(class_name: str | None, clip_id: str):
+    if not class_name:
+        return None
+    try:
+        return get_detector()
+    except DetectorUnavailable:
+        log.warning("detector unavailable; working on %s without it", clip_id)
+        return None
+
+
 def run_analysis(job: jobs.JobRecord) -> None:
     clip = store.get_clip_by_id(job.ref_id)
-    if clip is None or clip.target is None:
-        raise media.MediaError("클립이나 대상이 지워졌습니다.")
+    if clip is None:
+        raise media.MediaError("클립이 지워졌습니다.")
+    project = store.get_project(clip.project_id)
     video = clip.video
     proxy = video.proxy_path
     if not proxy or not Path(proxy).is_file():
         raise media.MediaError("미리보기가 아직 없습니다.")
-    target = clip.target
-    detector = None
-    if target.get("class_name"):
-        try:
-            detector = get_detector()
-        except DetectorUnavailable:
-            log.warning("detector unavailable; tracking %s without re-detection", clip.id)
     fps = media.proxy_fps(video.fps)
     capture = cv2.VideoCapture(proxy)
     frame_count = int(capture.get(cv2.CAP_PROP_FRAME_COUNT))
     capture.release()
     if frame_count <= 0:
         frame_count = round((video.duration or 0) * fps)
+
+    # The project's shared target, picked in another clip: what it looks like.
+    reference = None
+    shared = project.reference if project else None
+    if shared and shared.get("clip_id") != clip.id:
+        image = cv2.imread(str(store.reference_image(clip.project_id)))
+        if image is not None:
+            reference = Appearance.of(image, (0, 0, image.shape[1], image.shape[0]))
+
+    target = clip.target
+    if target is None:
+        if reference is None:
+            raise media.MediaError("대상이 없습니다. 이 클립에서 대상을 지정하세요.")
+        class_name = shared.get("class_name") if shared else None
+        jobs.report(job.id, 0.0, "locate", "다른 영상에서 고른 대상을 찾는 중")
+        found = locate.find_in_clip(
+            proxy,
+            fps=fps,
+            frame_count=frame_count,
+            source_size=(video.width or 1, video.height or 1),
+            reference=reference,
+            class_name=class_name,
+            detector=_detector_for(class_name, clip.id),
+            on_progress=_Reporter(job.id, "locate"),
+        )
+        if found is None:
+            raise media.MediaError("이 영상에서 고른 대상을 찾지 못했습니다. 직접 지정하세요.")
+        x, y, w, h = found.box
+        target = {
+            "t": found.t,
+            "frame_index": found.frame_index,
+            "bbox": {"x": x, "y": y, "width": w, "height": h},
+            "source": "auto",
+            "class_name": class_name,
+            "confidence": None,
+            "score": found.score,
+        }
+        if not store.set_found_target(clip.id, job.id, target):
+            return  # a newer job owns the clip
+    detector = _detector_for(target.get("class_name"), clip.id)
     jobs.report(job.id, 0.0, "track", "대상을 따라가는 중")
     bbox = target["bbox"]
     result = analysis.analyze(
@@ -91,6 +136,7 @@ def run_analysis(job: jobs.JobRecord) -> None:
         class_name=target.get("class_name"),
         detector=detector,
         on_progress=_Reporter(job.id, "track"),
+        reference=reference,
     )
     folder = store.clip_dir(clip.id)
     folder.mkdir(parents=True, exist_ok=True)

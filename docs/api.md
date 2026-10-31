@@ -32,9 +32,12 @@ FastAPI가 제공한다. 모든 경로는 `/api` 아래에 있고, 빌드된 웹
   "name": "주말 산책",
   "created_at": "2026-10-31T05:33:09.120Z",
   "updated_at": "2026-10-31T05:36:18.004Z",
-  "clips": [{ "id": "…", "project_id": "4f0c…", "position": 0, "video": { "...": "Video" } }]
+  "clips": [{ "id": "…", "project_id": "4f0c…", "position": 0, "video": { "...": "Video" } }],
+  "reference": { "clip_id": "…", "class_name": "dog" }
 }
 ```
+
+`reference`는 프로젝트가 공유하는 대상이다. 마지막으로 손으로 대상을 고른 클립이고, 아직 없으면 `null`이다(아래 "대상").
 
 `ProjectSummary`는 `clip_count`, `total_duration`(원본 길이 합), `cover_video_id`(첫 클립 영상)를 더 준다.
 
@@ -46,9 +49,9 @@ FastAPI가 제공한다. 모든 경로는 `/api` 아래에 있고, 빌드된 웹
 | `DELETE /api/projects/{id}/clips/{clip_id}` | 빼기. 쓰는 곳이 없어진 영상 파일도 지운다 | `204` |
 | `PUT /api/projects/{id}/clips/order` | 순서 바꾸기. 본문 `{"clip_ids": [...]}`에 이 프로젝트 클립을 한 번씩 모두 | `200` `Project` |
 | `PUT /api/projects/{id}/clips/{clip_id}/target` | 따라갈 대상 저장 (아래) | `200` `Clip` |
-| `DELETE /api/projects/{id}/clips/{clip_id}/target` | 대상 지우기. 분석도 취소하고 지운다 | `200` `Clip` |
+| `DELETE /api/projects/{id}/clips/{clip_id}/target` | 대상 지우기. 분석도 취소하고 지운다. 공유 대상을 고른 클립이면 공유도 끝난다 | `200` `Clip` |
 | `GET /api/projects/{id}/clips/{clip_id}/analysis` | 분석 결과 JSON (아래). 아직이면 `409` | `200` |
-| `POST /api/projects/{id}/clips/{clip_id}/analysis` | 지금 대상으로 다시 분석. 대상이 없으면 `409` | `202` `Clip` |
+| `POST /api/projects/{id}/clips/{clip_id}/analysis` | 지금 대상으로 다시 분석. 대상이 없으면 공유 대상을 다시 찾는다. 둘 다 없으면 `409` | `202` `Clip` |
 | `GET /api/projects/{id}/clips/{clip_id}/segments` | 자르는 설정과 결과 (아래). 분석 전이면 `409` | `200` |
 | `PUT /api/projects/{id}/clips/{clip_id}/segments` | 설정·손 편집을 바꾸고 다시 자르기 | `200` |
 
@@ -68,6 +71,13 @@ FastAPI가 제공한다. 모든 경로는 `/api` 아래에 있고, 빌드된 웹
 - `source`는 `detect`(탐지 박스를 누름) 또는 `drag`(직접 그림). `drag`면 `class_name`, `confidence`는 버린다.
 - 서버는 `t`를 프레임 가운데로 맞추고 `frame_index`를 붙여 `Clip.target`에 돌려준다. 박스는 화면 안으로 잘라 내고, 남는 쪽이 4px보다 작으면 `422`다. 영상 길이를 넘는 `t`도 `422`다.
 - 대상을 저장하면 그 클립의 이전 분석을 취소하고 새 분석 작업(`kind: "analyze"`)을 큐에 넣는다. 진행은 `Clip.analysis`에 있다.
+
+공유 대상:
+
+- 손으로 저장한 대상은 프로젝트의 `reference`가 된다. 서버는 그 장면에서 대상을 잘라 겉모습(색 분포와 SIFT 특징점)을 기억한다.
+- 대상이 없거나 자동으로 찾은 다른 클립은 모두 다시 분석한다. 나중에 추가하는 클립도 같다. 이런 분석 작업은 먼저 `stage: "locate"`로 영상을 0.5초 간격(최대 120장)으로 훑어 같은 대상을 찾는다. 같은 종류의 탐지 박스와 특징점이 맞는 자리 중 가장 닮은 곳을 고른다.
+- 찾으면 `Clip.target`에 `source: "auto"`와 닮은 정도 `score`(0..1)를 붙여 저장하고 `stage: "track"`으로 분석을 이어 간다. 그 클립에서 손으로 대상을 고르면 그것이 우선한다.
+- 닮은 정도가 0.65보다 낮으면 못 찾은 것으로 보고 작업이 실패한다(`Clip.target`은 `null`, 오류 문구는 직접 지정 안내).
 
 ### 분석
 
@@ -98,6 +108,7 @@ FastAPI가 제공한다. 모든 경로는 `/api` 아래에 있고, 빌드된 웹
 ```
 
 - 박스(`x`, `y`, `w`, `h`)는 원본 픽셀이고, 대상을 놓친 샘플은 `visible: false`, 박스는 `null`이다.
+- 추적 중 박스 안이 대상과 두 번 연속 닮지 않으면(화면 밖으로 나감, 가려짐) 놓친 것으로 본다. 놓친 동안은 0.3초마다 화면 전체에서 다시 찾고, 찾으면 거기서 다시 따라간다.
 - `move`: 바로 앞 샘플에서 중심 이동과 크기 변화, 박스 대각선/초. 카메라 움직임을 뺀 값.
 - `turn`: 화면 평면 안 회전, 도/초. 카메라 회전을 뺀 값.
 - `flow`: 박스 자체의 이동을 뺀 안쪽 움직임(제자리 회전, 몸 돌리기, 자세 변화), 박스 대각선/초.

@@ -464,3 +464,53 @@ def test_segments_need_analysis_and_valid_edits(tmp_path: Path) -> None:
     bad = {"edits": [{"op": "keep", "start": 3, "end": 2}]}
     assert client.put(f"{base}/segments", json=bad).status_code == 422
     assert client.put(f"{base}/segments", json={"params": {"sensitivity": 9}}).status_code == 422
+
+
+def test_target_picked_in_one_clip_is_found_in_the_others(tmp_path: Path) -> None:
+    from synthetic import BOX, make_scene
+
+    project = _project()
+    pid = project["id"]
+    first = _upload(pid, make_scene(tmp_path / "a.mp4", lambda t: BOX[:2], seconds=2)).json()
+    _upload(
+        pid,
+        make_scene(
+            tmp_path / "b.mp4",
+            lambda t: (60 + 40 * t, 200),
+            seconds=3,
+            background_seed=11,
+            turn=lambda t: 60 * t,
+        ),
+    ).json()
+    while worker.run_once():  # proxies
+        pass
+
+    x, y, w, h = BOX
+    client.put(
+        f"/api/projects/{pid}/clips/{first['id']}/target",
+        json={"t": 0.5, "bbox": {"x": x, "y": y, "width": w, "height": h}, "source": "drag"},
+    )
+    view = client.get(f"/api/projects/{pid}").json()
+    assert view["reference"] == {"clip_id": first["id"], "class_name": None}
+    other = view["clips"][1]
+    assert other["target"] is None
+    assert other["analysis"]["status"] == "queued"
+
+    while worker.run_once():  # analyse the first, find and analyse the second
+        pass
+
+    other = client.get(f"/api/projects/{pid}").json()["clips"][1]
+    assert other["target"]["source"] == "auto"
+    assert other["target"]["score"] > 0.65
+    found_t = other["target"]["t"]
+    assert other["target"]["bbox"]["x"] == pytest.approx(60 + 40 * found_t, abs=15)
+    assert other["analysis"]["ready"] is True
+
+    # A clip added later looks for the shared target by itself.
+    third = _upload(pid, make_scene(tmp_path / "c.mp4", lambda t: (400, 40), seconds=2)).json()
+    assert third["id"]
+    while worker.run_once():
+        pass
+    clips = client.get(f"/api/projects/{pid}").json()["clips"]
+    assert clips[2]["target"]["source"] == "auto"
+    assert clips[2]["target"]["bbox"]["x"] == pytest.approx(400, abs=12)

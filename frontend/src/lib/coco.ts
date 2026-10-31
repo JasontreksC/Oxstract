@@ -82,6 +82,15 @@ const KOREAN: Record<string, string> = {
   toothbrush: "칫솔",
 };
 
+/** 대상의 이름. 다른 클립에서 고른 대상을 찾아 정했으면 그린 영역이 아니다. */
+export function targetLabel(
+  target: { source: string; class_name?: string | null } | null | undefined,
+): string {
+  return target?.source === "auto" && !target.class_name
+    ? "찾은 대상"
+    : classLabel(target?.class_name);
+}
+
 export function classLabel(name: string | null | undefined): string {
   if (!name) {
     return "직접 그린 영역";

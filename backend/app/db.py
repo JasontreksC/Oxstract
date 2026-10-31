@@ -116,6 +116,8 @@ _MIGRATIONS: list[tuple[str, ...]] = [
         """,
         "CREATE INDEX renders_project ON renders(project_id, created_at)",
     ),
+    # 7: the project's shared target: which clip it was picked in, its class, its look.
+    ("ALTER TABLE projects ADD COLUMN reference TEXT",),
 ]
 
 SCHEMA_VERSION = len(_MIGRATIONS)

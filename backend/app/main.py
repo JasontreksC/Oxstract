@@ -16,6 +16,7 @@ import uuid
 from pathlib import Path
 from typing import NoReturn
 
+import cv2
 from fastapi import APIRouter, FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, Response, StreamingResponse
@@ -49,6 +50,7 @@ from app.schemas import (
     ProjectUpdate,
     ProjectView,
     ProxyState,
+    ReferenceView,
     RenderSettings,
     RenderView,
     SegmentSettings,
@@ -146,6 +148,7 @@ def _project_view(project: store.ProjectRecord) -> ProjectView:
         created_at=project.created_at,
         updated_at=project.updated_at,
         clips=[_clip_view(clip) for clip in project.clips],
+        reference=ReferenceView.model_validate(project.reference) if project.reference else None,
     )
 
 
@@ -307,7 +310,33 @@ def set_target(project_id: str, clip_id: str, body: TargetIn) -> ClipView:
         class_name=body.class_name if body.source == "detect" else None,
         confidence=body.confidence if body.source == "detect" else None,
     )
-    return _clip_view(store.set_target(project_id, clip_id, target.model_dump()))
+    clip = store.set_target(project_id, clip_id, target.model_dump())
+    _share_target(clip, target)
+    return _clip_view(store.get_clip(project_id, clip_id) or clip)
+
+
+def _share_target(clip: store.ClipRecord, target: Target) -> None:
+    """Save what the target looks like and look for it in the project's other clips."""
+
+    video = clip.video
+    if not video.proxy_path or not Path(video.proxy_path).is_file():
+        return
+    try:
+        frame = read_frame(video.proxy_path, target.t, fps=proxy_fps(video.fps))
+    except MediaError:
+        return
+    sx = frame.shape[1] / (video.width or frame.shape[1])
+    sy = frame.shape[0] / (video.height or frame.shape[0])
+    box = target.bbox
+    x1, y1 = max(0, round(box.x * sx)), max(0, round(box.y * sy))
+    x2, y2 = round((box.x + box.width) * sx), round((box.y + box.height) * sy)
+    crop = frame[y1:y2, x1:x2]
+    if crop.size == 0:
+        return
+    path = store.reference_image(clip.project_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    cv2.imwrite(str(path), crop)
+    store.share_target(clip.project_id, clip.id, target.class_name)
 
 
 @api.post(
@@ -382,9 +411,11 @@ def put_segments(project_id: str, clip_id: str, body: SegmentSettings) -> Segmen
 @api.delete("/projects/{project_id}/clips/{clip_id}/target", response_model=ClipView)
 def clear_target(project_id: str, clip_id: str) -> ClipView:
     try:
-        return _clip_view(store.set_target(project_id, clip_id, None))
+        clip = store.set_target(project_id, clip_id, None)
     except store.NotFound:
         _not_found(f"클립 {clip_id}")
+    store.forget_shared_target(project_id, clip_id)
+    return _clip_view(clip)
 
 
 @api.put("/projects/{project_id}/clips/order", response_model=ProjectView)

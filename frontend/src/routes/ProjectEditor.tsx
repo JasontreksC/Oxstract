@@ -9,7 +9,7 @@ import {
   useRetryProxy,
   useSetTarget,
 } from "../api/queries";
-import { analysisReady, proxyReady, type Clip, type Project } from "../api/types";
+import { analysisReady, locating, proxyReady, type Clip, type Project } from "../api/types";
 import { ActivityButton } from "../editor/ActivityButton";
 import { ProjectTitle } from "../editor/ProjectTitle";
 import { Stepper } from "../editor/Stepper";
@@ -38,8 +38,9 @@ function hasFiles(event: DragEvent): boolean {
   return Array.from(event.dataTransfer.types).includes("Files");
 }
 
+/** 대상이 없고, 다른 클립의 대상을 찾는 중도 아니다. */
 function needsTarget(clip: Clip): boolean {
-  return !clip.target && proxyReady(clip.video);
+  return !clip.target && !locating(clip) && proxyReady(clip.video);
 }
 
 /** 고른 클립. 없으면 단계에 맞는 클립부터 연다(대상 단계는 대상이 필요한 것부터). */
@@ -105,6 +106,11 @@ export function ProjectEditor() {
     return <Navigate to={`/p/${projectId}/media`} replace />;
   }
   const clipDraft = draft && selected && draft.clipId === selected.id ? draft.target : null;
+  const reference = data.reference;
+  const sharedFrom =
+    reference && selected && reference.clip_id !== selected.id
+      ? (data.clips.find((clip) => clip.id === reference.clip_id)?.video.filename ?? null)
+      : null;
   const targetProgress = {
     done: data.clips.filter((clip) => clip.target).length,
     total: data.clips.length,
@@ -114,19 +120,11 @@ export function ProjectEditor() {
     if (!selected || !clipDraft) {
       return;
     }
-    const current = selected.id;
     const { t, bbox, source, class_name, confidence } = clipDraft;
+    // 다른 클립들은 서버가 이 대상을 찾아 정하므로 여기 머문다.
     setTarget.mutate(
-      { clipId: current, target: { t, bbox, source, class_name, confidence } },
-      {
-        onSuccess: () => {
-          setDraft(null);
-          const next = data.clips.find((clip) => clip.id !== current && needsTarget(clip));
-          if (next) {
-            setSelectedId(next.id);
-          }
-        },
-      },
+      { clipId: selected.id, target: { t, bbox, source, class_name, confidence } },
+      { onSuccess: () => setDraft(null) },
     );
   }
 
@@ -277,6 +275,7 @@ export function ProjectEditor() {
             ) : step === "target" && selected ? (
               <TargetInspector
                 clip={selected}
+                sharedFrom={sharedFrom}
                 draft={clipDraft}
                 progress={targetProgress}
                 saving={setTarget.isPending || clearTarget.isPending}

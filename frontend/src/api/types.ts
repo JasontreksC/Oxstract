@@ -61,8 +61,12 @@ export interface TargetInput {
   confidence?: number | null;
 }
 
-export interface Target extends TargetInput {
+export interface Target extends Omit<TargetInput, "source"> {
+  /** "auto": 다른 클립에서 고른 대상을 이 영상에서 찾아 정했다. */
+  source: TargetSource | "auto";
   frame_index: number;
+  /** "auto"일 때 고른 대상과 닮은 정도 0..1. */
+  score?: number | null;
 }
 
 export interface Detection {
@@ -164,6 +168,8 @@ export interface Project {
   created_at: string;
   updated_at: string;
   clips: Clip[];
+  /** 손으로 고른 대상. 다른 클립은 이것을 찾아 따라간다. */
+  reference: { clip_id: string; class_name: string | null } | null;
 }
 
 export interface ProjectSummary {
@@ -182,6 +188,11 @@ export function isActive(status: JobStatus | undefined): boolean {
 
 export function proxyReady(video: Video): boolean {
   return video.proxy?.status === "done";
+}
+
+/** 대상이 아직 없고 다른 클립에서 고른 대상을 찾는 중이다. */
+export function locating(clip: Clip): boolean {
+  return !clip.target && isActive(clip.analysis?.status);
 }
 
 export function analysisReady(clip: Clip): boolean {

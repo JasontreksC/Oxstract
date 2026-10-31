@@ -14,9 +14,11 @@ Two motions come from feature points tracked between samples: the camera's
 (points outside the box) and the object's (points in the middle of the box).
 The object's points move the box when there are enough of them (they follow
 spinning objects that CSRT slides off); CSRT takes over on smooth or blurred
-objects with too few points. A target picked
-from a detection box is also checked against the detector about once a second,
-and a hand-drawn one is searched for by template matching after it is lost.
+objects with too few points. A target picked from a detection box is also
+checked against the detector about once a second.
+Every sample the box is compared with what the target looks like (app/appearance.py);
+when it stops looking like it, the target is lost until a whole-frame search
+finds it again, so a target that leaves the frame and returns is picked up again.
 """
 
 from __future__ import annotations
@@ -29,6 +31,7 @@ from itertools import batched
 import cv2
 import numpy as np
 
+from app.appearance import SAME_OBJECT, Appearance
 from app.detect import Detector
 from app.media import Canceled, MediaError, frame_time
 
@@ -42,6 +45,12 @@ FLOW_SIDE = 96
 DRIFT_LIMIT = 0.1
 #: Per-sample size changes below this (log scale) are jitter; the box keeps its size.
 SCALE_DEADBAND = 0.01
+#: Samples in a row that must not look like the target before it counts as lost.
+LOST_AFTER = 2
+#: While lost, search the whole frame every this many samples.
+SEARCH_EVERY = 3
+#: A search result must look at least this much like the target.
+FOUND = 0.65
 
 Box = tuple[float, float, float, float]
 IDENTITY = np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
@@ -253,81 +262,89 @@ class _FrameSource:
 
 
 class _Tracker:
-    """CSRT checked by the object's feature points, plus re-detection or template search."""
+    """CSRT checked by the object's feature points, and by what the object looks like.
+
+    When the box stops looking like the target for LOST_AFTER samples in a row (it
+    left the frame, or something covers it), the target counts as lost: no box is
+    reported, and every SEARCH_EVERY samples the whole frame is searched for it
+    (same-class detections compared by appearance, then keypoint matching).
+    """
 
     def __init__(self, detector: Detector | None, class_name: str | None, detect_every: int):
         self.detector = detector if class_name else None
         self.class_name = class_name
         self.detect_every = detect_every
         self.csrt = None
-        self.template: np.ndarray | None = None
-        self.last_box: Box | None = None
+        self.reference: Appearance | None = None
+        self.recent: Appearance | None = None
         self.since_detect = 0
+        self.since_refresh = 0
+        self.since_search = 0
+        self.doubt = 0
+        self.lost = False
         self.size = (0, 0)
 
-    def start(self, frame: np.ndarray, box: Box) -> None:
+    def start(self, frame: np.ndarray, box: Box, reference: Appearance | None = None) -> None:
         self.size = (frame.shape[1], frame.shape[0])
         self._reset(frame, box)
+        self.reference = reference or Appearance.of(frame, box)
+        self.recent = Appearance.of(frame, box)
 
     def _reset(self, frame: np.ndarray, box: Box) -> None:
         self.csrt = cv2.TrackerCSRT.create()
         self.csrt.init(frame, _int_box(box))
-        x, y, w, h = _int_box(box)
-        self.template = cv2.cvtColor(frame[y : y + h, x : x + w], cv2.COLOR_BGR2GRAY)
-        self.last_box = box
         self.since_detect = 0
+        self.doubt = 0
+        self.lost = False
 
     def _clip(self, box: Box | None) -> Box | None:
         return _clip_box(box, *self.size) if box is not None else None
 
-    def _detect(self, frame: np.ndarray, near: Box, lost: bool) -> Box | None:
-        """The same-class detection overlapping `near`. Once lost, also the closest one."""
+    def _looks_like(self, frame: np.ndarray, box: Box) -> float:
+        looks = [a.similarity(frame, box) for a in (self.reference, self.recent) if a is not None]
+        return max(looks, default=1.0)
 
+    def _same_class(self, frame: np.ndarray) -> list[Box]:
         assert self.detector is not None
-        boxes = [
+        return [
             (d.x, d.y, d.width, d.height)
             for d in self.detector(frame)
             if d.class_name == self.class_name
         ]
-        if not boxes:
-            return None
-        best = max(boxes, key=lambda b: _iou(b, near))
-        if _iou(best, near) >= 0.2:
-            return best
-        if not lost:
-            return None  # a different object of the same kind; keep the tracked one
-        cx, cy = _centre(near)
 
-        def distance(b: Box) -> float:
-            bx, by = _centre(b)
-            return math.hypot(bx - cx, by - cy)
+    def _find(self, frame: np.ndarray) -> Box | None:
+        """Search the whole frame for the target."""
 
-        closest = min(boxes, key=distance)
-        return closest if distance(closest) <= 2 * _diag(near) else None
-
-    def _search(self, grey: np.ndarray, near: Box) -> Box | None:
-        if self.template is None or self.template.size == 0:
-            return None
-        th, tw = self.template.shape
-        x, y, w, h = near
-        x1, y1 = max(0, int(x - w)), max(0, int(y - h))
-        x2, y2 = min(grey.shape[1], int(x + 2 * w)), min(grey.shape[0], int(y + 2 * h))
-        window = grey[y1:y2, x1:x2]
-        if window.shape[0] < th or window.shape[1] < tw:
-            return None
-        scores = cv2.matchTemplate(window, self.template, cv2.TM_CCOEFF_NORMED)
-        _, best, _, (bx, by) = cv2.minMaxLoc(scores)
-        return (float(x1 + bx), float(y1 + by), float(tw), float(th)) if best >= 0.6 else None
+        if self.detector is not None:
+            scored = [(box, self._looks_like(frame, box)) for box in self._same_class(frame)]
+            best = max(scored, key=lambda item: item[1], default=None)
+            if best is not None and best[1] >= FOUND:
+                return self._clip(best[0])
+        for appearance in (self.reference, self.recent):
+            located = appearance.locate(frame) if appearance is not None else None
+            if located is not None and located[1] >= FOUND:
+                return self._clip(located[0])
+        return None
 
     def update(
         self, frame: np.ndarray, grey: np.ndarray, prev_grey: np.ndarray, prev_box: Box | None
     ) -> tuple[Box | None, Motion | None]:
         assert self.csrt is not None
+        if self.lost:
+            self.since_search += 1
+            if self.since_search < SEARCH_EVERY:
+                return None, None
+            self.since_search = 0
+            found = self._find(frame)
+            if found is None:
+                return None, None
+            self._reset(frame, found)
+            return found, None  # no motion is measured across the gap
+
         ok, raw = self.csrt.update(frame)
         box = self._clip(tuple(float(v) for v in raw)) if ok else None
         motion = estimate_motion(prev_grey, grey, prev_box) if prev_box is not None else None
-
-        if motion is not None and motion.obj is not None:
+        if motion is not None and motion.obj is not None and prev_box is not None:
             predicted = self._clip(predict_box(prev_box, motion.obj))
             if predicted is not None:
                 drifted = box is None or math.dist(_centre(box), _centre(predicted)) > (
@@ -337,23 +354,27 @@ class _Tracker:
                 if drifted:
                     self._reset(frame, box)
 
+        # A class target is checked against the detector now and then: an overlapping
+        # detection of its class corrects drift.
         self.since_detect += 1
-        recheck = self.detect_every if box is not None else max(1, self.detect_every // 2)
-        if self.detector is not None and self.since_detect >= recheck:
+        if box is not None and self.detector is not None and self.since_detect >= self.detect_every:
             self.since_detect = 0
-            near = box or self.last_box
-            found = self._clip(self._detect(frame, near, box is None)) if near is not None else None
-            if found is not None:
-                box = found
-                self._reset(frame, box)
-        elif box is None and self.class_name is None and self.last_box is not None:
-            found = self._clip(self._search(grey, self.last_box))
-            if found is not None:
-                box = found
+            overlapping = [b for b in self._same_class(frame) if _iou(b, box) >= 0.2]
+            if overlapping:
+                box = self._clip(max(overlapping, key=lambda b: _iou(b, box))) or box
                 self._reset(frame, box)
 
         if box is not None:
-            self.last_box = box
+            score = self._looks_like(frame, box)
+            self.doubt = self.doubt + 1 if score < SAME_OBJECT else 0
+            self.since_refresh += 1
+            if score >= 0.8 and self.since_refresh >= self.detect_every:
+                self.since_refresh = 0
+                self.recent = Appearance.of(frame, box) or self.recent
+        if box is None or self.doubt >= LOST_AFTER:
+            self.lost = True
+            self.since_search = SEARCH_EVERY - 1  # look again on the next sample
+            return None, None
         return box, motion
 
 
@@ -365,13 +386,14 @@ def _track(
     dt: float,
     progress: _Progress,
     forward: bool,
+    reference: Appearance | None,
 ) -> None:
     previous: tuple[int, np.ndarray, Box | None] | None = None
     for index, frame in frames:
         grey = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         sample = samples.setdefault(index, Sample(index))
         if previous is None:
-            tracker.start(frame, start_box)
+            tracker.start(frame, start_box, reference)
             sample.box = start_box
             previous = (index, grey, start_box)
             continue
@@ -397,8 +419,12 @@ def analyze(
     class_name: str | None,
     detector: Detector | None,
     on_progress: Callable[[float], bool],
+    reference: Appearance | None = None,
 ) -> dict:
     """Track the target through the whole proxy and return the signals as plain JSON data.
+
+    `reference` is what the target looks like when it was picked in another clip;
+    without it the look is taken from this clip's target frame.
 
     `target_box` and the returned boxes are in source pixels; `source_size` is the
     (width, height) those pixels refer to.
@@ -434,9 +460,10 @@ def analyze(
     def tracker() -> _Tracker:
         return _Tracker(detector, class_name, detect_every)
 
-    _track(source.forward(indices[position:]), box, samples, tracker(), dt, progress, True)
-    backward = indices[: position + 1][::-1]
-    _track(source.backward(backward), box, samples, tracker(), dt, progress, False)
+    forward = source.forward(indices[position:])
+    _track(forward, box, samples, tracker(), dt, progress, True, reference)
+    backward = source.backward(indices[: position + 1][::-1])
+    _track(backward, box, samples, tracker(), dt, progress, False, reference)
 
     columns: dict[str, list] = {
         key: [] for key in ("t", "x", "y", "w", "h", "visible", "move", "turn", "flow")

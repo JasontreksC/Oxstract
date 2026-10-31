@@ -2,7 +2,7 @@ import { useRef, useState, type PointerEvent } from "react";
 import { ApiError } from "../../api/client";
 import { useDetections } from "../../api/queries";
 import type { Box, Target, TargetInput, Video } from "../../api/types";
-import { classLabel } from "../../lib/coco";
+import { classLabel, targetLabel } from "../../lib/coco";
 import { formatTime, percent } from "../../lib/format";
 import { useDebounced } from "../../lib/useDebounced";
 import {
@@ -216,7 +216,7 @@ export function TargetOverlay({ state, video, saved, draft, onPick }: TargetOver
           }}
           aria-hidden="true"
         >
-          <span className={labelClass(shownBox.y)}>{classLabel(shown?.class_name)}</span>
+          <span className={labelClass(shownBox.y)}>{targetLabel(shown)}</span>
         </div>
       ) : null}
       {dragBox ? (

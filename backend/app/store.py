@@ -81,6 +81,7 @@ class ProjectRecord:
     updated_at: str
     clips: list[ClipRecord]
     sequence: dict | None = None
+    reference: dict | None = None
 
 
 @dataclass(frozen=True)
@@ -117,6 +118,12 @@ def clip_dir(clip_id: str) -> Path:
 
 def render_dir(render_id: str) -> Path:
     return media_root() / "renders" / render_id
+
+
+def reference_image(project_id: str) -> Path:
+    """What the shared target looks like: its crop from the frame it was picked in."""
+
+    return media_root() / "projects" / project_id / "reference.png"
 
 
 def _cancel_jobs(conn: sqlite3.Connection, ref_id: str) -> None:
@@ -259,7 +266,7 @@ def list_projects() -> list[ProjectSummary]:
 
 def _get_project(conn: sqlite3.Connection, project_id: str) -> ProjectRecord | None:
     row = conn.execute(
-        "SELECT id, name, created_at, updated_at, sequence FROM projects WHERE id = ?",
+        "SELECT id, name, created_at, updated_at, sequence, reference FROM projects WHERE id = ?",
         (project_id,),
     ).fetchone()
     if row is None:
@@ -299,8 +306,13 @@ def _get_project(conn: sqlite3.Connection, project_id: str) -> ProjectRecord | N
             )
         )
     values = dict(row)
-    sequence = values.pop("sequence")
-    return ProjectRecord(clips=clips, sequence=json.loads(sequence) if sequence else None, **values)
+    sequence, reference = values.pop("sequence"), values.pop("reference")
+    return ProjectRecord(
+        clips=clips,
+        sequence=json.loads(sequence) if sequence else None,
+        reference=json.loads(reference) if reference else None,
+        **values,
+    )
 
 
 def get_project(project_id: str) -> ProjectRecord | None:
@@ -386,6 +398,13 @@ def add_clip(
             "INSERT INTO clips (id, project_id, video_id, position) VALUES (?, ?, ?, ?)",
             (clip_id, project_id, video_id, position),
         )
+        reference = conn.execute(
+            "SELECT reference FROM projects WHERE id = ?", (project_id,)
+        ).fetchone()[0]
+        if reference:
+            # Queued after the proxy job, so the proxy exists when it runs.
+            job_id = jobs.enqueue(conn, "analyze", clip_id)
+            conn.execute("UPDATE clips SET analysis_job_id = ? WHERE id = ?", (job_id, clip_id))
         _touch(conn, project_id)
         video = _get_video(conn, video_id)
     assert video is not None
@@ -425,8 +444,11 @@ def get_clip_by_id(clip_id: str) -> ClipRecord | None:
     return get_clip(row[0], clip_id) if row else None
 
 
-def set_target(project_id: str, clip_id: str, target: dict | None) -> ClipRecord:
-    """Store or clear the object the clip follows. A new target starts a fresh analysis."""
+def set_target(
+    project_id: str, clip_id: str, target: dict | None, *, analyse: bool | None = None
+) -> ClipRecord:
+    """Store or clear the object the clip follows. A new target starts a fresh analysis;
+    `analyse=True` also starts one without a target (to find the shared target)."""
 
     with transaction() as conn:
         row = conn.execute(
@@ -436,7 +458,9 @@ def set_target(project_id: str, clip_id: str, target: dict | None) -> ClipRecord
         if row is None:
             raise NotFound(clip_id)
         _cancel_jobs(conn, clip_id)
-        job_id = jobs.enqueue(conn, "analyze", clip_id) if target is not None else None
+        if analyse is None:
+            analyse = target is not None
+        job_id = jobs.enqueue(conn, "analyze", clip_id) if analyse else None
         conn.execute(
             "UPDATE clips SET target = ?, analysis_job_id = ?, analysis_path = NULL, cuts = NULL"
             " WHERE id = ?",
@@ -451,14 +475,71 @@ def set_target(project_id: str, clip_id: str, target: dict | None) -> ClipRecord
 
 
 def queue_analysis(project_id: str, clip_id: str) -> ClipRecord:
-    """Analyse the clip's current target again, for example after a failure."""
+    """Analyse the clip again, for example after a failure. Without a target of its
+    own the clip looks for the project's shared target first."""
 
+    project = get_project(project_id)
     clip = get_clip(project_id, clip_id)
-    if clip is None:
+    if project is None or clip is None:
         raise NotFound(clip_id)
-    if clip.target is None:
+    shared = project.reference
+    if clip.target is None and (not shared or shared.get("clip_id") == clip_id):
         raise MissingTarget("대상을 먼저 지정하세요.")
-    return set_target(project_id, clip_id, clip.target)
+    return set_target(project_id, clip_id, clip.target, analyse=True)
+
+
+def share_target(project_id: str, clip_id: str, class_name: str | None) -> list[str]:
+    """Make the clip's target the project's shared one, and look for it again in every
+    clip whose target was found automatically or is missing. Return those clip ids."""
+
+    relocated = []
+    with transaction() as conn:
+        conn.execute(
+            "UPDATE projects SET reference = ? WHERE id = ?",
+            (json.dumps({"clip_id": clip_id, "class_name": class_name}), project_id),
+        )
+        rows = conn.execute(
+            "SELECT id, target, analysis_path FROM clips WHERE project_id = ? AND id != ?",
+            (project_id, clip_id),
+        ).fetchall()
+        for other_id, target, analysis_path in rows:
+            if target and json.loads(target).get("source") != "auto":
+                continue  # picked by hand in that clip; keep it
+            _cancel_jobs(conn, other_id)
+            job_id = jobs.enqueue(conn, "analyze", other_id)
+            conn.execute(
+                "UPDATE clips SET target = NULL, analysis_job_id = ?, analysis_path = NULL,"
+                " cuts = NULL WHERE id = ?",
+                (job_id, other_id),
+            )
+            if analysis_path:
+                Path(analysis_path).unlink(missing_ok=True)
+            relocated.append(other_id)
+    return relocated
+
+
+def forget_shared_target(project_id: str, clip_id: str) -> None:
+    """Drop the project's shared target if it was picked in this clip."""
+
+    with session() as conn:
+        cursor = conn.execute(
+            "UPDATE projects SET reference = NULL"
+            " WHERE id = ? AND json_extract(reference, '$.clip_id') = ?",
+            (project_id, clip_id),
+        )
+    if cursor.rowcount:
+        reference_image(project_id).unlink(missing_ok=True)
+
+
+def set_found_target(clip_id: str, job_id: str, target: dict) -> bool:
+    """Store a target found automatically, unless a newer job owns the clip."""
+
+    with session() as conn:
+        cursor = conn.execute(
+            "UPDATE clips SET target = ? WHERE id = ? AND analysis_job_id = ?",
+            (json.dumps(target), clip_id, job_id),
+        )
+    return cursor.rowcount == 1
 
 
 def set_analysis_result(clip_id: str, job_id: str, path: Path, cuts: list[dict]) -> bool:

@@ -1,8 +1,8 @@
 import { LoaderCircle } from "lucide-react";
 import { useNavigate } from "react-router";
 import { useRerunAnalysis } from "../../api/queries";
-import type { Clip } from "../../api/types";
-import { classLabel } from "../../lib/coco";
+import { locating, type Clip } from "../../api/types";
+import { targetLabel } from "../../lib/coco";
 import { percent } from "../../lib/format";
 import inspector from "../../editor/Inspector.module.css";
 import s from "./AnalysisInspector.module.css";
@@ -16,17 +16,21 @@ export function AnalysisInspector({ clip }: { clip: Clip }) {
     <div>
       <div className={inspector.kicker}>
         {clip.video.filename}
-        {target ? ` · 대상: ${classLabel(target.class_name)}` : ""}
+        {target ? ` · 대상: ${targetLabel(target)}` : ""}
       </div>
       <h2 className={inspector.heading}>움직임 분석</h2>
     </div>
   );
 
-  if (!target) {
+  if (!target && !locating(clip)) {
     return (
       <>
         {header}
-        <p className="notice">이 클립은 아직 대상이 없습니다.</p>
+        <p className={analysis?.status === "failed" ? "error-text" : "notice"}>
+          {analysis?.status === "failed"
+            ? (analysis.error ?? "이 영상에서 대상을 찾지 못했습니다.")
+            : "이 클립은 아직 대상이 없습니다."}
+        </p>
         <button
           type="button"
           className="btn btn-primary btn-block"
@@ -45,7 +49,9 @@ export function AnalysisInspector({ clip }: { clip: Clip }) {
         {header}
         <div className={s.status}>
           <LoaderCircle size={16} className="spin" aria-hidden="true" />
-          {analysis?.status === "running" ? `분석 중 ${percent(progress)}` : "분석 대기 중"}
+          {analysis?.status === "running"
+            ? `${target ? "분석" : "대상 찾는"} 중 ${percent(progress)}`
+            : "분석 대기 중"}
         </div>
         <div className="bar">
           <span style={{ width: percent(progress) }} />

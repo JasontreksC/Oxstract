@@ -2,7 +2,7 @@ import { Play, RotateCcw, Trash2, Undo2 } from "lucide-react";
 import { useNavigate } from "react-router";
 import { useRerunAnalysis } from "../../api/queries";
 import type { AnalysisResult, Clip } from "../../api/types";
-import { classLabel } from "../../lib/coco";
+import { targetLabel } from "../../lib/coco";
 import { formatTime, percent } from "../../lib/format";
 import inspector from "../../editor/Inspector.module.css";
 import type { CutEditor } from "./useCutEditor";
@@ -49,7 +49,7 @@ export function SegmentInspector({
       <div>
         <div className={inspector.kicker}>
           {clip.video.filename}
-          {clip.target ? ` · 대상: ${classLabel(clip.target.class_name)}` : ""}
+          {clip.target ? ` · 대상: ${targetLabel(clip.target)}` : ""}
         </div>
         <h2 className={inspector.heading}>남길 구간 기준</h2>
       </div>

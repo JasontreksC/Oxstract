@@ -19,7 +19,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { Check, CircleAlert, Crosshair, GripVertical, LoaderCircle, Plus, X } from "lucide-react";
 import { mediaUrl } from "../../api/client";
 import { useReorderClips } from "../../api/queries";
-import type { Clip, Project } from "../../api/types";
+import { locating, type Clip, type Project } from "../../api/types";
 import { formatBytes, formatTime, percent } from "../../lib/format";
 import type { Uploads } from "./uploads";
 import s from "./ClipList.module.css";
@@ -204,10 +204,19 @@ function ClipStatus({ clip }: { clip: Clip }) {
       </Badge>
     );
   }
+  if (locating(clip)) {
+    return (
+      <Badge tone="accent-strong" icon={spinner}>
+        {analysis?.status === "queued"
+          ? "대상 찾기 대기"
+          : `대상 찾는 중 ${percent(analysis?.progress ?? 0)}`}
+      </Badge>
+    );
+  }
   if (!target) {
     return (
       <Badge tone="warning" icon={<Crosshair size={12} aria-hidden="true" />}>
-        대상 필요
+        {analysis?.status === "failed" ? "못 찾음 · 직접 지정" : "대상 필요"}
       </Badge>
     );
   }

@@ -50,3 +50,63 @@ def make_clip(path: Path, motion: str) -> Path:
         writer.write(cv2.cvtColor(view, cv2.COLOR_GRAY2BGR))
     writer.release()
     return path
+
+
+def make_scene(
+    path: Path,
+    position,
+    *,
+    seconds: float,
+    background_seed: int = 7,
+    turn=lambda t: 0.0,
+) -> Path:
+    """The textured disk at `position(t)` (top-left, may be off screen) on a still scene.
+
+    The disk is always the same one (seed 7), so clips with another
+    `background_seed` show the same object somewhere else.
+    """
+
+    disk_rng = np.random.default_rng(7)
+    _texture(disk_rng, HEIGHT + 40, WIDTH + 200, 6)  # keep the disk identical to make_clip's
+    disk = cv2.normalize(_texture(disk_rng, OBJECT, OBJECT, 1), None, 0, 255, cv2.NORM_MINMAX)
+    cv2.line(disk, (10, OBJECT // 2), (OBJECT - 10, OBJECT // 2), 255, 6)
+    cv2.circle(disk, (OBJECT // 3, OBJECT // 3), 10, 0, -1)
+    mask = np.zeros((OBJECT, OBJECT), np.uint8)
+    cv2.circle(mask, (OBJECT // 2, OBJECT // 2), OBJECT // 2 - 1, 255, -1)
+    scene_rng = np.random.default_rng(background_seed)
+    scene = cv2.normalize(_texture(scene_rng, HEIGHT, WIDTH, 6), None, 60, 160, cv2.NORM_MINMAX)
+
+    writer = cv2.VideoWriter(str(path), cv2.VideoWriter_fourcc(*"mp4v"), FPS, (WIDTH, HEIGHT))
+    for index in range(round(FPS * seconds)):
+        t = index / FPS
+        canvas = scene.copy()
+        rotation = cv2.getRotationMatrix2D((OBJECT / 2, OBJECT / 2), turn(t), 1.0)
+        sprite = cv2.warpAffine(disk, rotation, (OBJECT, OBJECT), borderMode=cv2.BORDER_REFLECT)
+        x, y = (round(v) for v in position(t))
+        # Paste the visible part of the disk only.
+        x1, y1 = max(0, x), max(0, y)
+        x2, y2 = min(WIDTH, x + OBJECT), min(HEIGHT, y + OBJECT)
+        if x2 > x1 and y2 > y1:
+            region = canvas[y1:y2, x1:x2]
+            part = mask[y1 - y : y2 - y, x1 - x : x2 - x] > 0
+            region[part] = sprite[y1 - y : y2 - y, x1 - x : x2 - x][part]
+        writer.write(cv2.cvtColor(canvas, cv2.COLOR_GRAY2BGR))
+    writer.release()
+    return path
+
+
+def exit_and_return(t: float) -> tuple[float, float]:
+    """Rests, slides off the right edge (1-1.6 s), stays away, slides back (3-3.6 s)."""
+
+    away = WIDTH + 40
+    if t < 1:
+        x = START[0]
+    elif t < 1.6:
+        x = START[0] + (away - START[0]) * (t - 1) / 0.6
+    elif t < 3:
+        x = away
+    elif t < 3.6:
+        x = away + (START[0] - away) * (t - 3) / 0.6
+    else:
+        x = START[0]
+    return (x, START[1])

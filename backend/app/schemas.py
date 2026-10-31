@@ -52,9 +52,15 @@ class TargetIn(BaseModel):
 
 
 class Target(TargetIn):
-    """Stored target. `t` is snapped to the middle of proxy frame `frame_index`."""
+    """Stored target. `t` is snapped to the middle of proxy frame `frame_index`.
 
+    `source` "auto" means it was found by looking for the project's shared target
+    (picked in another clip); `score` is how much it looked like it, 0..1.
+    """
+
+    source: Literal["drag", "detect", "auto"]  # type: ignore[assignment]
     frame_index: int = Field(ge=0)
+    score: float | None = Field(default=None, ge=0, le=1)
 
 
 class TransitionAfter(BaseModel):
@@ -226,12 +232,20 @@ class ClipView(BaseModel):
     cuts: list[Cut] | None = None
 
 
+class ReferenceView(BaseModel):
+    """The target picked by hand, shared by every clip of the project."""
+
+    clip_id: str
+    class_name: str | None = None
+
+
 class ProjectView(BaseModel):
     id: str
     name: str
     created_at: str
     updated_at: str
     clips: list[ClipView]
+    reference: ReferenceView | None = None
 
 
 class ProjectSummaryView(BaseModel):

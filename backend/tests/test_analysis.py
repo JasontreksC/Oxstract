@@ -159,3 +159,96 @@ def test_class_target_ignores_other_classes(tmp_path: Path) -> None:
     samples = _run_with(path, _FakeDetector(("cat", START[0] + 150, START[1])))["samples"]
 
     assert samples["x"][-1] == pytest.approx(START[0] + 150, abs=10)
+
+
+def test_target_leaving_and_returning_is_lost_then_found(tmp_path: Path) -> None:
+    from synthetic import exit_and_return, make_scene
+
+    path = make_scene(tmp_path / "exit.mp4", exit_and_return, seconds=5)
+
+    result = analyze(
+        str(path),
+        fps=FPS,
+        frame_count=FPS * 5,
+        target_index=15,
+        target_box=BOX,
+        source_size=(WIDTH, HEIGHT),
+        class_name=None,
+        detector=None,
+        on_progress=lambda fraction: True,
+    )
+
+    samples = result["samples"]
+    t = np.array(samples["t"])
+    visible = np.array(samples["visible"])
+    assert visible[t < 1.0].all()
+    assert not visible[(t > 2.0) & (t < 3.0)].any()  # gone: no box stuck at the edge
+    assert visible[t > 3.7].all()  # back: found again
+    assert samples["x"][-1] == pytest.approx(START[0], abs=10)
+
+
+def test_finds_the_same_object_in_another_clip(tmp_path: Path) -> None:
+    import cv2
+    from synthetic import make_scene
+
+    from app.appearance import Appearance
+    from app.locate import find_in_clip
+
+    first = make_scene(tmp_path / "a.mp4", lambda t: START, seconds=1)
+    ok, frame = cv2.VideoCapture(str(first)).read()
+    assert ok
+    reference = Appearance.of(frame, BOX)
+    assert reference is not None
+    # Same disk, other background, other place, turning; it enters at 1 s.
+    other = make_scene(
+        tmp_path / "b.mp4",
+        lambda t: (60 + 40 * t, 200) if t > 1 else (-200, 200),
+        seconds=3,
+        background_seed=11,
+        turn=lambda t: 60 * t,
+    )
+
+    found = find_in_clip(
+        str(other),
+        fps=FPS,
+        frame_count=FPS * 3,
+        source_size=(WIDTH, HEIGHT),
+        reference=reference,
+        class_name=None,
+        detector=None,
+        on_progress=lambda fraction: True,
+    )
+
+    assert found is not None
+    assert found.t > 1
+    x, y, w, h = found.box
+    assert x == pytest.approx(60 + 40 * found.t, abs=12)
+    assert y == pytest.approx(200, abs=12)
+    assert w == pytest.approx(110, abs=15)
+    assert found.score > 0.65
+
+
+def test_another_object_is_not_taken_for_the_target(tmp_path: Path) -> None:
+    import cv2
+    from synthetic import make_scene
+
+    from app.appearance import Appearance
+    from app.locate import find_in_clip
+
+    first = make_scene(tmp_path / "a.mp4", lambda t: START, seconds=1)
+    ok, frame = cv2.VideoCapture(str(first)).read()
+    reference = Appearance.of(frame, BOX)
+    empty = make_scene(tmp_path / "empty.mp4", lambda t: (-500, -500), seconds=2, background_seed=3)
+
+    found = find_in_clip(
+        str(empty),
+        fps=FPS,
+        frame_count=FPS * 2,
+        source_size=(WIDTH, HEIGHT),
+        reference=reference,
+        class_name=None,
+        detector=None,
+        on_progress=lambda fraction: True,
+    )
+
+    assert found is None
